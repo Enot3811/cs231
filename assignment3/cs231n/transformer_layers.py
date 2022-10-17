@@ -38,7 +38,11 @@ class PositionalEncoding(nn.Module):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        col = torch.arange(0, max_len).unsqueeze(1)
+        row = 10000**(-torch.arange(0, embed_dim, 2) / embed_dim)
+        m = col * row
+        pe[:, :, 0::2] = torch.sin(m)
+        pe[:, :, 1::2] = torch.cos(m)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -70,7 +74,8 @@ class PositionalEncoding(nn.Module):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        output = x + self.pe[:, :S, :]
+        output = self.dropout(output)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -126,7 +131,8 @@ class MultiHeadAttention(nn.Module):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        self.dropout = nn.Dropout(dropout)
+        self.num_heads = num_heads
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -174,7 +180,27 @@ class MultiHeadAttention(nn.Module):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        calc_query = self.query(query) # N x S x E
+        calc_key = self.key(key) # N x T x E
+        calc_value = self.value(value) # N x T x E
+
+        calc_query = calc_query.reshape(N, S, self.num_heads, -1).transpose(1, 2) # N x H x S x E/H
+        calc_key = calc_key.reshape(N, T, self.num_heads, -1).transpose(1, 2) # N x H x T x E/H
+        calc_value = calc_value.reshape(N, T, self.num_heads, -1).transpose(1, 2) # N x H x T x E/H
+
+        # N x H x S x E/H @ N x H x E/H x T -> N x H x S x T
+        dot = (torch.matmul(calc_query, calc_key.transpose(2, 3)) /
+               torch.sqrt(torch.tensor(D // self.num_heads)))
+
+        if attn_mask is not None:
+            dot = dot.masked_fill(attn_mask == False, -float('inf'))
+
+        softmax_result = torch.softmax(dot, 3)
+        drop = self.dropout(softmax_result)
+        # N x H x S x T @ N x H x T x E/H -> N x H x S x E/H
+        dot = torch.matmul(drop, calc_value)
+
+        output = self.proj(dot.transpose(1, 2).reshape(N, S, D))
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
